@@ -1,3 +1,5 @@
+
+
 /*
     ZenFlow
     by Move38, Inc. 2019
@@ -15,8 +17,14 @@
     --------------------
 */
 
-//#include "Serial.h"
-//ServicePortSerial Serial;
+/*
+Any changes to this code revolve around disableClick. It is a bool value that is set to true or false at different place in the program.
+Ultimately, it prevents a player from changing the colour of one or more blinks until the color spread is totally resolved across all blinks. 
+The player is still free to change the colour of one or more blinks in the midst of a "sparkle".
+*/
+
+#include "Serial.h"
+ServicePortSerial Serial;
 
 enum modeStates {SPREAD, CONNECT};
 byte currentMode;
@@ -42,10 +50,10 @@ Timer transitionTimer;
 byte sendData;
 
 bool bChangeMode = false;
-
+bool disableClick = false;
 void setup() {
   // put your setup code here, to run once:
-  //Serial.begin();
+ // Serial.begin();
 
   currentMode = SPREAD;
   commandState = INERT;
@@ -64,31 +72,38 @@ void loop() {
 
   // BUTTON HANDLING
   //if single clicked, move to SEND_PERSIST
-  if (buttonSingleClicked()) {
+
+
+  if (buttonSingleClicked()&& disableClick == false) {
+ 
     //Serial.println("Single Click Registered");
-    if (currentMode == SPREAD) {
-      changeInternalState(SEND_PERSIST);
-      currentHue = nextHue(currentHue);
+    if (currentMode == SPREAD) { 
+                               
+      changeInternalState(SEND_PERSIST); 
+      currentHue = nextHue(currentHue); //changes the colour of the blink being pressed
       //Serial.print("hue: ");
       //Serial.println(currentHue);
+      
     }
-    if (currentMode == CONNECT) {
+    if (currentMode == CONNECT) { //connect is when the blinks are in mirroring mode
       timeOfPress = millis();
     }
+    disableClick = true;
   }
+ 
 
   //if double clicked, move to SEND_SPARKLE
   if (buttonDoubleClicked()) {
     //Serial.println("Double Click Registered");
 
-    if (currentMode == SPREAD) {
-      changeInternalState(SEND_SPARKLE);
+    if (currentMode == SPREAD) { //if current mode is in default "we can spread now"
+      changeInternalState(SEND_SPARKLE); //change internal state to send sparkles
       currentHue = millis() % COUNT_OF(hues); //generate a random color
       //Serial.print("hue: ");
       //Serial.println(currentHue);
     }
     if (currentMode == CONNECT) {
-      timeOfPress = millis();
+      timeOfPress = millis(); //when connecting, store how much time this takes
     }
   }
 
@@ -140,10 +155,12 @@ void loop() {
   if (currentMode == SPREAD) {
     switch (internalState) {
       case RESOLVING:
+      
       case INERT:
         inertDisplay();//both inert and resolving share the same display logic
         break;
       case SEND_PERSIST:
+      
         sendPersistDisplay();
         break;
       case SEND_SPARKLE:
@@ -169,6 +186,7 @@ void inertLoop() {
       byte neighborData = getLastValueReceivedOnFace(f);
       if (getMode(neighborData) == SPREAD) {
         if (getCommandState(neighborData) == SEND_PERSIST) {
+          disableClick = true;
           changeInternalState(SEND_PERSIST);
           currentHue = getHue(neighborData);//you are going to take on the color of the commanding neighbor
           break;  // leave forloop
@@ -184,9 +202,11 @@ void inertLoop() {
 }
 
 void sendPersistLoop() {
+
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
     commandState = internalState;
+    
   }
 
   if (transitionTimer.isExpired()) {
@@ -196,8 +216,12 @@ void sendPersistLoop() {
     if (canResolve(SEND_PERSIST) && !isAlone()) {
       changeInternalState(RESOLVING);
       commandState = RESOLVING;
+      
+     
     }
+    disableClick = false;
   }
+
 }
 
 bool canResolve(byte a) {
@@ -250,14 +274,16 @@ void resolvingLoop() {
     if (!isValueReceivedOnFaceExpired(f) && getMode(neighborData) == SPREAD) {//something is here, and in a compatible mode. We ignore the others
       if (getCommandState(neighborData) != RESOLVING && getCommandState(neighborData) != INERT) {//it is neither of the acceptable states
         canInert = false;
+        disableClick = true;
       }
     }
   }//end of face loop
 
-  //if we've survived and are stil true, we transition to resolving
+  //if we've survived and are still true, we transition to resolving
   if (canInert) {
     changeInternalState(INERT);
     commandState = INERT;
+    disableClick = false;
   }
 }
 
